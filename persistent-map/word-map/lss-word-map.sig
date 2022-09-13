@@ -25,7 +25,7 @@ signature LSS_WORD_MAP =
    sig
       include AUGMENTED_WORD_MAP
 
-      (* Returns true if the maps are equal
+      (* If `shallowEq` returns true, the maps are equal
        * If `shallowEq` returns false, nothing is known *)
       val shallowEq: map * map -> bool
    end
