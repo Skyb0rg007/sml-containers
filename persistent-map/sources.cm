@@ -22,7 +22,6 @@ Library
   (* functor HashConsWordMapFn *)
 
   (* Hash Maps *)
-  (* signature HASHABLE_TYPE *)
   (* functor HAMTFn *)
 
   (* functor WeakHashConsFn *)
@@ -47,7 +46,6 @@ is
   (* word-map/hash-cons-word-map.fun *)
   (* word-map/hash-cons.fun *)
 
-  hash-map/hashable-type.sig
   hash-map/hamt.fun
 
 (* vim: set tw=0 ts=2 sw=2 cms=(*%s*): *)
