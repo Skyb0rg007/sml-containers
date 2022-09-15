@@ -5,6 +5,7 @@ sig
 type t
 
 (* Creation *)
+val new: unit -> t
 val fromSeed: Word64.word -> t
 val fromSeedGamma: Word64.word * Word64.word -> t
 
@@ -18,9 +19,9 @@ val split: t -> t
 val perturb: t * Word64.word -> unit
 
 (* Random number generation *)
-val word64: t -> Word64.word * Word64.word -> Word64.word
-val int: t -> int * int -> int
-val logInt: t -> int * int -> int
+val word64: t -> Word64.word
+val word64Upto: t -> Word64.word -> Word64.word
+val intInf: t -> IntInf.int * IntInf.int -> IntInf.int
 
 end
 

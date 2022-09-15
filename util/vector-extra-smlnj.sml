@@ -32,7 +32,7 @@ fun create n =
       {done = done, sub = sub, update = update}
    end
 
-fun unfoldli (n, b, f) =
+fun unfoldi (n, b, f) =
    let
       val {done, update, ...} = create n
 

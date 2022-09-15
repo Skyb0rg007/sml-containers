@@ -1,5 +1,5 @@
 
-structure Generator =
+structure Generator: GENERATOR =
 struct
 
 type 'a t = 'a Types.generator
@@ -9,49 +9,15 @@ val generate = Types.generate
 
 val create = Types.Gen
 
-fun sizes (min_len, max_len) =
-   create (fn (size, rng) =>
-      let
-         val max_len = Int.min (max_len, min_len + size)
-            handle Overflow => max_len
+fun sample gen =
+   let
+      val size = 30
+      val rng = SplitMix.new ()
+   in
+      List.tabulate (10, fn _ => generate (gen, size, rng))
+   end
 
-         val len = SplitMix.logInt rng (min_len, max_len)
-
-         fun for (i, j, k) =
-            if i < j
-               then (k i; for (i + 1, j, k))
-            else ()
-      in
-         if len = 0
-            then []
-         else
-            let
-               val sizes = Array.array (len, 0)
-               val remaining = size - (len - min_len)
-
-               val () =
-                  for (0, remaining, fn _ =>
-                     let
-                        val idx = SplitMix.logInt rng (0, len - 1)
-                     in
-                        Array.update (sizes, idx, Array.sub (sizes, idx) + 1)
-                     end)
-
-               val () =
-                  for (0, len - 1, fn i =>
-                     let
-                        val j = SplitMix.int rng (i, len - 1)
-                        val x = Array.sub (sizes, i)
-                        val y = Array.sub (sizes, j)
-                     in
-                        Array.update (sizes, i, y)
-                        ; Array.update (sizes, j, x)
-                     end)
-            in
-               Array.toList sizes
-            end
-      end)
-
+(** Monadic Interface **)
 
 val getSize = create (fn (size, _) => size)
 
@@ -128,6 +94,78 @@ fun fix f =
       ; res
    end
 
+(** Integer generation **)
+
+fun chooseWord64 (lo, hi) =
+   if lo > hi
+      then raise Fail "Generator.chooseWord64: crossed bounds"
+   else
+      create (fn (_, rng) => SplitMix.word64Upto rng (hi - lo) + lo)
+
+fun chooseInt64 (lo, hi) =
+   if lo > hi
+      then raise Fail "Generator.chooseInt64: crossed bounds"
+   else
+      let
+         val lo = Word64.fromLargeInt (Int64.toLarge lo)
+         val hi = Word64.fromLargeInt (Int64.toLarge hi)
+      in
+         (* TODO: Test this *)
+         create (fn (_, rng) =>
+            Int64.fromLarge (Word64.toLargeIntX (SplitMix.word64Upto rng (hi - lo) + lo)))
+      end
+
+fun chooseIntInf (lo, hi) =
+   if lo > hi
+      then raise Fail "Generator.chooseIntInf: crossed bounds"
+   else 
+      if ~(IntInf.pow (2, 63)) <= lo andalso hi < IntInf.pow (2, 63)
+         then map Int64.toLarge (chooseInt64 (Int64.fromLarge lo, Int64.fromLarge hi))
+      else if 0 <= lo andalso hi < IntInf.pow (2, 64)
+         then map Word64.toLargeInt (chooseWord64 (Word64.fromLargeInt lo, Word64.fromLargeInt hi))
+      else
+         create (fn (_, rng) => SplitMix.intInf rng (lo, hi))
+
+fun chooseInt32 (lo, hi) =
+   if lo > hi
+      then raise Fail "Generator.chooseInt32: crossed bounds"
+   else
+      let
+         val to = Int32.fromInt o Int64.toInt
+         val from = Int64.fromInt o Int32.toInt
+      in
+         map to (chooseInt64 (from lo, from hi))
+      end
+
+fun chooseWord32 (lo, hi) =
+   if lo > hi
+      then raise Fail "Generator.chooseWord32: crossed bounds"
+   else
+      map Word32.fromLarge (chooseWord64 (Word32.toLarge lo, Word32.toLarge hi))
+
+fun chooseWord (lo, hi) =
+   if lo > hi
+      then raise Fail "Generator.chooseWord: crossed bounds"
+   else
+      map Word.fromLarge (chooseWord64 (Word.toLarge lo, Word.toLarge hi))
+
+val chooseInt =
+   if Option.isSome Int.precision andalso Option.valOf Int.precision <= 64
+      then
+         fn (lo, hi) =>
+            if lo > hi
+               then raise Fail "Generator.chooseInt: crossed bounds"
+            else
+               map Int64.toInt (chooseInt64 (Int64.fromInt lo, Int64.fromInt hi))
+   else
+      fn (lo, hi) =>
+         if lo > hi
+            then raise Fail "Generator.chooseInt: crossed bounds"
+         else
+            map Int.fromLarge (chooseIntInf (Int.toLarge lo, Int.toLarge hi))
+
+(** Combinators **)
+
 fun sequence gens =
    create (fn (size, rng) =>
       List.map (fn gen => generate (gen, size, rng)) gens)
@@ -140,10 +178,10 @@ fun oneof [] = raise Fail "Generator.oneof: empty list"
   | oneof xs =
    let
       val xs = Vector.fromList xs
-      val len = Vector.length xs
+      val lim = Word64.fromInt (Vector.length xs - 1)
       fun gen (size, rng) =
          let
-            val idx = SplitMix.int rng (0, len - 1)
+            val idx = Word64.toInt (SplitMix.word64Upto rng lim)
          in
             generate (Vector.sub (xs, idx), size, rng)
          end
@@ -169,8 +207,8 @@ fun frequency [] = raise Fail "Generator.frequency: empty list"
 
          fun gen (size, rng) =
             let
-               val n = SplitMix.int rng (1, sum)
-               val g = pick (n, xs)
+               val n = SplitMix.word64Upto rng (Word64.fromInt (sum - 1))
+               val g = pick (Word64.toInt n + 1, xs)
             in
                generate (g, size, rng)
             end
@@ -182,9 +220,14 @@ fun elements [] = raise Fail "Generator.elements: empty list"
   | elements xs =
    let
       val xs = Vector.fromList xs
-      val len = Vector.length xs
+      val lim = Word64.fromInt (Vector.length xs - 1)
    in
-      create (fn (_, rng) => Vector.sub (xs, SplitMix.int rng (0, len - 1)))
+      create (fn (_, rng) =>
+         let
+            val n = Word64.toInt (SplitMix.word64Upto rng lim)
+         in
+            Vector.sub (xs, n)
+         end)
    end
 
 fun vectorOfSize (n, gen) =
@@ -195,119 +238,53 @@ fun listOfSize (n, gen) =
    create (fn (size, rng) =>
       List.tabulate (n, fn _ => generate (gen, size, rng)))
 
+fun listOf gen =
+   sized (fn n =>
+   bind (chooseInt (0, n), fn k =>
+   listOfSize (k, gen)))
+
+fun vectorOf gen =
+   sized (fn n =>
+   bind (chooseInt (0, n), fn k =>
+   vectorOfSize (k, gen)))
+
 val unit = create (fn _ => ())
-val bool = create (fn (_, rng) => SplitMix.word64 rng (0w0, 0w1) = 0w0)
-val char = create (fn (_, rng) => Char.chr (SplitMix.int rng (0, 255)))
-val int = create (fn (_, rng) => SplitMix.int rng (0, valOf Int.maxInt))
+val bool = create (fn (_, rng) => SplitMix.word64Upto rng 0w1 = 0w0)
+val char = map Char.chr (chooseInt (0, 255))
 
-(* fun union xs = join (fromList xs) *)
+(* TODO: More efficient versions *)
+val int =
+   let
+      val (min, max) =
+         case (Int.minInt, Int.maxInt) of
+            (SOME a, SOME b) => (a, b)
+          | _ => (Int.fromLarge (~(IntInf.pow (2, 63))),
+                  Int.fromLarge (IntInf.pow (2, 63)))
+   in
+      chooseInt (min, max)
+   end
 
-(* fun int (lo, hi) = T (fn (_, rng) => SplitMix.int rng (lo, hi)) *)
-
-(* fun fromWeightedList [] = raise Fail "Generator.fromWeightedList: empty list" *)
-(*   | fromWeightedList xs = *)
-(*    if List.all (fn (k, _) => k = 0) xs *)
-(*       then raise Fail "Generator.fromWeightedList: all weights are zero" *)
-(*    else if List.exists (fn (k, _) => k < 0) xs *)
-(*       then raise Fail "Generator.fromWeightedList: negative weight" *)
-(*    else *)
-(*       let *)
-(*          val tot = List.foldr (fn ((k, _), n) => k + n) 0 xs *)
-(*          fun pick (_, []) = raise Fail "Generator.fromWeightedList: internal error" *)
-(*            | pick (n, (k, x) :: xs) = *)
-(*             if n <= k *)
-(*                then x *)
-(*             else pick (n - 1, xs) *)
-(*       in *)
-(*          bind (int (1, tot), fn n => pick (n, xs)) *)
-(*       end *)
-
-(* structure Observer = *)
-(*    struct *)
-(*       type 'a gen = 'a t *)
-(*       datatype 'a t = T of 'a * int * Word64.word -> Word64.word *)
-
-(*       fun observe (T f, x, size, seed) = f (x, size, seed) *)
-
-(*       fun contramap f (T gen) = T (fn (x, size, seed) => gen (f x, size, seed)) *)
-
-(*       fun fixed_point wrap = *)
-(*          let *)
-(*             val r = ref (fn _ => raise Fail "Observer.fixed_point: forced") *)
-(*             fun go x = !r x *)
-(*             val T res = wrap (T go) *)
-(*          in *)
-(*             r := res *)
-(*             ; T res *)
-(*          end *)
-
-(*       fun hashCombine (seed, hash) = *)
-(*          Word64.xorb (seed, hash + 0wx9e3779b9 + Word64.<< (seed, 0w6) + Word64.>> (seed, 0w2)) *)
-
-(*       val unit = T (fn ((), _, seed) => seed) *)
-
-(*       val bool = T (fn (b, _, seed) => hashCombine (seed, if b then 0w1 else 0w2)) *)
-
-(*       val char = T (fn (c, _, seed) => hashCombine (seed, Word64.fromInt (Char.ord c))) *)
-
-(*       val int = T (fn (n, _, seed) => hashCombine (seed, Word64.fromInt n)) *)
-
-(*       val word64 = T (fn (w, _, seed) => hashCombine (seed, w)) *)
-
-(*       fun pair (T oa, T ob) = *)
-(*          T (fn ((a, b), size, seed) => ob (b, size, oa (a, size, seed))) *)
-
-(*       fun either (T oa, T ob) = *)
-(*          T (fn (Either.INL a, size, seed) => oa (a, size, hashCombine (seed, 0w1)) *)
-(*              | (Either.INR b, size, seed) => ob (b, size, hashCombine (seed, 0w2))) *)
-
-(*       fun option (T obs) = *)
-(*          T (fn (NONE, _, seed) => hashCombine (seed, 0w1) *)
-(*              | (SOME a, size, seed) => obs (a, size, hashCombine (seed, 0w2))) *)
-
-(*       fun list (T obs) = T (fn (xs, size, seed) => *)
-(*          let *)
-(*             val len = List.length xs *)
-(*             val szs = generate (sizes (len, len), size, SplitMix.fromSeed seed) *)
-(*          in *)
-(*             ListPair.foldlEq *)
-(*                (fn (x, size, seed) => obs (x, size, hashCombine (seed, 0w1))) *)
-(*                (hashCombine (seed, 0w0)) *)
-(*                (xs, szs) *)
-(*          end) *)
-
-(*       fun func (domain, range) = T (fn (f, size, seed) => *)
-(*          let *)
-(*             val rng = SplitMix.fromSeed seed *)
-(*             val sizes = generate (sizes (0, Option.getOpt (Int.maxInt, 4294967296)), size * 2, rng) *)
-(*          in *)
-(*             List.foldl *)
-(*                (fn (size, seed) => *)
-(*                   observe (range, f (generate (domain, size, rng)), size, seed)) *)
-(*                seed *)
-(*                sizes *)
-(*          end) *)
-(*    end *)
-
-(* fun func (Observer.T domain, T range) = *)
-(*    let *)
-(*       fun gen (size, rng) = *)
-(*          let *)
-(*             val rng = SplitMix.split rng *)
-(*          in *)
-(*             fn x => *)
-(*                let *)
-(*                   val hash = domain (x, size, 0w0) *)
-(*                   val rng = SplitMix.copy rng *)
-(*                in *)
-(*                   SplitMix.perturb (rng, hash) *)
-(*                   ; range (size, rng) *)
-(*                end *)
-(*          end *)
-(*    in *)
-(*       T gen *)
-(*    end *)
-
+fun func (domain, range) =
+   let
+      fun gen (size, rng) =
+         let
+            (* Split the RNG, since the returned function must be pure *)
+            val rng = SplitMix.split rng
+         in
+            fn x =>
+               let
+                  (* 2^64 - 59, largest 64-bit prime number *)
+                  val hash = 0w18446744073709551557
+                  val hash = Types.observe (domain, x, size, hash)
+                  val rng = SplitMix.copy rng
+                  val () = SplitMix.perturb (rng, hash)
+               in
+                  generate (range, size, rng)
+               end
+         end
+   in
+      create gen
+   end
 
 end
 

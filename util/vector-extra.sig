@@ -21,14 +21,14 @@ sig
  *)
 val create: int -> {done: unit -> 'a vector, sub: int -> 'a, update: int * 'a -> unit}
 
-(* `unfoldli (n, b, f)`
+(* `unfoldi (n, b, f)`
  * Constructs a vector υ of length `n`, whose elements υᵢ are determined by:
  *   b₀ = b
  *   (vᵢ, bᵢ₊₁) = f (i, bᵢ)
  *
  * This function is linear in `n`, though much faster for MLton than SML/NJ
  *)
-val unfoldli: int * 'b * (int * 'b -> 'a * 'b) -> 'a vector * 'b
+val unfoldi: int * 'b * (int * 'b -> 'a * 'b) -> 'a vector * 'b
 
 end
 

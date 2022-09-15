@@ -5,9 +5,9 @@ sig
 type 'a t
 type 'a observer
 
-val create: (int * SplitMix.t -> 'a) -> 'a t
 val generate: 'a t * int * SplitMix.t -> 'a
-(* val sample: 'a t -> 'a list *)
+val sample: 'a t -> 'a list
+val create: (int * SplitMix.t -> 'a) -> 'a t
 
 (* Monadic interface *)
 val map: ('a -> 'b) -> 'a t -> 'b t
@@ -37,16 +37,18 @@ val frequency: (int * 'a t) list -> 'a t
 val elements: 'a list -> 'a t
 val listOfSize: int * 'a t -> 'a list t
 val vectorOfSize: int * 'a t -> 'a vector t
+val listOf: 'a t -> 'a list t
+val vectorOf: 'a t -> 'a vector t
+val func: 'a observer * 'b t -> ('a -> 'b) t
 
-(* val func: 'a Observer.t * 'b t -> ('a -> 'b) t *)
-(* val all: 'a t list -> 'a list t *)
-(* val all_: 'a t list -> unit t *)
-(* val fromList: 'a list -> 'a t *)
-(* val fromVector: 'a vector -> 'a t *)
-(* val union: 'a t list -> 'a t *)
-(* val fromWeightedList: (int * 'a t) list -> 'a t *)
-(* val int: int * int -> int t *)
-val sizes: int * int -> int list t
+(* Choosing bounded integers *)
+val chooseInt: int * int -> int t
+val chooseInt32: Int32.int * Int32.int -> Int32.int t
+val chooseInt64: Int64.int * Int64.int -> Int64.int t
+val chooseWord: word * word -> word t
+val chooseWord32: Word32.word * Word32.word -> Word32.word t
+val chooseWord64: Word64.word * Word64.word -> Word64.word t
+val chooseIntInf: IntInf.int * IntInf.int -> IntInf.int t
 
 (* Basic types *)
 val unit: unit t

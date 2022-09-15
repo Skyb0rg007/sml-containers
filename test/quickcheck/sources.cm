@@ -1,7 +1,10 @@
 
-Group is
+Library
+  structure QuickCheck
+is
   $/basis.cm
   ../../util/sources.cm
+  ../../seq/sources.cm
 
   splitmix.sig
   splitmix.sml
@@ -13,3 +16,8 @@ Group is
 
   observer.sig
   observer.sml
+
+  quickcheck.sig
+  quickcheck.sml
+
+(* vim: set tw=0 ts=2 sw=2 cms=(*%s*): *)

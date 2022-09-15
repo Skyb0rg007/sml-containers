@@ -58,37 +58,45 @@ fun option obs =
 
 fun list obs =
    create (fn (xs, size, seed) =>
-      let
-         val len = List.length xs
-         val rng = SplitMix.fromSeed seed
-         val sizes = Generator.generate (Generator.sizes (len, len), size, rng)
-      in
-         ListPair.foldlEq
-            (fn (x, size, seed) =>
-               observe (obs, x, size, hashCombine (seed, 0w1)))
-            (hashCombine (seed, 0w0))
-            (xs, sizes)
-      end)
+      List.foldl
+         (fn (x, seed) => observe (obs, x, size, hashCombine (seed, 0w1)))
+         (hashCombine (seed, 0w0))
+         xs)
 
-fun vector obs = contramap Vector.toList (list obs)
+fun vector obs =
+   create (fn (xs, size, seed) =>
+      Vector.foldl
+         (fn (x, seed) => observe (obs, x, size, hashCombine (seed, 0w1)))
+         (hashCombine (seed, 0w0))
+         xs)
 
 fun func (domain, range) =
    create (fn (f, size, seed) =>
       let
          val rng = SplitMix.fromSeed seed
-         val inputRange = (0, 4294967296)
-         val sizes = Generator.generate (Generator.sizes inputRange, size * 2, rng)
+         val args = Generator.generate (Generator.listOf domain, size * 2, rng)
       in
          List.foldl
-            (fn (size, seed) =>
-               let
-                  val x = Generator.generate (domain, size, rng)
-               in
-                  observe (range, f x, size, seed)
-               end)
+            (fn (arg, seed) => observe (range, f arg, size, seed))
             seed
-            sizes
+            args
       end)
+(*    create (fn (f, size, seed) => *)
+(*       let *)
+(*          val rng = SplitMix.fromSeed seed *)
+(*          val inputRange = (0, 4294967296) *)
+(*          val sizes = Generator.generate (Generator.sizes inputRange, size * 2, rng) *)
+(*       in *)
+(*          List.foldl *)
+(*             (fn (size, seed) => *)
+(*                let *)
+(*                   val x = Generator.generate (domain, size, rng) *)
+(*                in *)
+(*                   observe (range, f x, size, seed) *)
+(*                end) *)
+(*             seed *)
+(*             sizes *)
+(*       end) *)
 
 end
 

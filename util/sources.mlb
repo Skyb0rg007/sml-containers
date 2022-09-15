@@ -7,7 +7,9 @@ local
    either.sml
    weak.sig
    weak-mlton.sml
+   vector-extra.sig
    vector-extra-mlton.sml
+   word-extra.sig
    $(DEFAULT_WORD)-extra.sml
    util.sig
    util-mlton.sml
@@ -16,7 +18,9 @@ in
    structure Either
    signature WEAK_REFERENCE
    structure Weak
+   signature VECTOR_EXTRA
    structure VectorEx
+   signature WORD_EXTRA
    structure WordEx
    signature UTIL
    structure Util
