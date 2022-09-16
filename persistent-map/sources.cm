@@ -9,6 +9,9 @@ Library
   signature MAP_ADAPTER_STRUCTS
   functor MapAdapterFn
 
+  signature MONO_MAP_ADAPTER_STRUCTS
+  functor MonoMapAdapterFn
+
   (* Word Maps *)
   signature WORD_MAP
   structure WordMap
@@ -41,6 +44,8 @@ is
   monomorphize-map.fun
   map-adapter.sig
   map-adapter.fun
+  mono-map-adapter.sig
+  mono-map-adapter.fun
 
   word-map/word-map.sig
   word-map/word-map.sml

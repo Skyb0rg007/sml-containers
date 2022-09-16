@@ -12,6 +12,8 @@ local
    monomorphize-map.fun
    map-adapter.sig
    map-adapter.fun
+   mono-map-adapter.sig
+   mono-map-adapter.fun
 
    word-map/word-map.sig
    word-map/word-map.sml
@@ -35,6 +37,9 @@ in
 
    signature MAP_ADAPTER_STRUCTS
    functor MapAdapterFn
+
+   signature MONO_MAP_ADAPTER_STRUCTS
+   functor MonoMapAdapterFn
 
    signature WORD_MAP
    structure WordMap
