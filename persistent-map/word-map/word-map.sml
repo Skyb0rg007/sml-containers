@@ -20,6 +20,8 @@ datatype 'a map =
  | Tip of key * 'a
  | Bin of word * word * 'a map * 'a map
 
+(* Validity *)
+
 (* Given a bitmask `m` with one bit set (say `m = 0w1 << n`),
  * zeroes out the lower `n + 1` bits of `k`
  *
@@ -710,6 +712,39 @@ fun viewMax Nil = NONE
               (k, x, r') => (k, x, binCheckR (p, m, l, r'))
    in
       SOME (go t)
+   end
+
+
+fun valid Nil = true
+  | valid (Tip _) = true
+  | valid t =
+   let
+      fun err msg =
+         (TextIO.output (TextIO.stdErr,
+            "[ERROR]: " ^ msg ^ "\n"); false)
+      fun go Nil = err "Nil not at toplevel"
+        | go (Tip _) = true
+        | go (Bin (p, m, l, r)) =
+         if WordEx.popCount m <> 1
+            then err "Mask does not have exactly one bit set"
+         else
+            let
+               val lkeys = keys l
+               val rkeys = keys r
+               fun sharePrefix k =
+                  if Word.andb (p, k) = p
+                     then true
+                  else err ("Key " ^ Word.toString k ^ " does not match prefix " ^ Word.toString p)
+            in
+               List.all sharePrefix lkeys
+               andalso List.all sharePrefix rkeys
+               andalso List.all (fn k => zero (k, m)) lkeys
+               andalso List.all (fn k => not (zero (k, m))) rkeys
+               andalso go l
+               andalso go r
+            end
+   in
+      go t
    end
 
 

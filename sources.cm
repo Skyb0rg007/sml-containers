@@ -17,6 +17,9 @@ Library
   signature MONOMORPHIZE_MAP_STRUCTS
   functor MonomorphizeMapFn
 
+  signature WORD_MAP
+  structure WordMap
+
   signature AUGMENTED_WORD_MAP
   signature AUGMENTED_WORD_MAP_STRUCTS
   functor AugmentedWordMapFn
@@ -25,7 +28,7 @@ Library
   signature LSS_WORD_MAP_STRUCTS
   functor LSSWordMapFn
 
-  functor HashTableFn
+  (* functor HashTableFn *)
 is
   $/basis.cm
 
@@ -34,6 +37,6 @@ is
   disjoint-set/sources.cm
   seq/sources.cm
   persistent-map/sources.cm
-  mutable-map/sources.cm
+  (* mutable-map/sources.cm *)
 
 (* vim: set tw=0 ts=2 sw=2 cms=(*%s*): *)

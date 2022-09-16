@@ -6,6 +6,9 @@ Library
   signature MONOMORPHIZE_MAP_STRUCTS
   functor MonomorphizeMapFn
 
+  signature MAP_ADAPTER_STRUCTS
+  functor MapAdapterFn
+
   (* Word Maps *)
   signature WORD_MAP
   structure WordMap
@@ -28,6 +31,7 @@ Library
 is
   $/basis.cm
   ../util/sources.cm
+  ../signatures/sources.cm
   ../disjoint-set/sources.cm
   ../seq/sources.cm
 
@@ -35,6 +39,8 @@ is
   mono-map.sig
   monomorphize-map.sig
   monomorphize-map.fun
+  map-adapter.sig
+  map-adapter.fun
 
   word-map/word-map.sig
   word-map/word-map.sml
