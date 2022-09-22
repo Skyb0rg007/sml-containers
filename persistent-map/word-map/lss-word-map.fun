@@ -291,8 +291,8 @@ fun alter f (t, k) =
                if nomatch (k, p, m)
                   then notFoundLink (p, t)
                else if zero (k, m)
-                  then bin (p, m, go l, r)
-               else bin (p, m, l, go r)
+                  then binCheckL (p, m, go l, r)
+               else binCheckR (p, m, l, go r)
    in
       go t
    end
@@ -401,8 +401,8 @@ fun differenceWithi f =
                     if nomatch (p2, p1, m1)
                        then t1
                     else if zero (p2, m1)
-                       then bin (p1, m1, go (l1, t2), r1)
-                    else bin (p1, m1, l1, go (r1, t2))
+                       then binCheckL (p1, m1, go (l1, t2), r1)
+                    else binCheckR (p1, m1, l1, go (r1, t2))
               else if shorter (m2, m1)
                  then
                     if nomatch (p1, p2, m2)
@@ -411,7 +411,7 @@ fun differenceWithi f =
                        then go (t1, l2)
                     else go (t1, r2)
               else if p1 = p2
-                 then bin (p1, m1, go (l1, l2), go (r1, r2))
+                 then binCheck (p1, m1, go (l1, l2), go (r1, r2))
               else t1
    in
       go
@@ -459,7 +459,7 @@ fun intersectionWithi f =
                            then go (t1, l2)
                         else go (t1, r2)
                   else if p1 = p2
-                     then bin (p1, m1, go (l1, l2), go (r1, r2))
+                     then binCheck (p1, m1, go (l1, l2), go (r1, r2))
                   else empty
    in
       go
@@ -646,7 +646,7 @@ fun filteri p =
                   val l' = go l
                   val r' = go r
                in
-                  bin (p, m, l', r')
+                  binCheck (p, m, l', r')
                end
    in
       go
@@ -689,7 +689,7 @@ fun mapEitheri f =
                   val (l1, l2) = go l
                   val (r1, r2) = go r
                in
-                  (bin (p, m, l1, r1), bin (p, m, l2, r2))
+                  (binCheck (p, m, l1, r1), binCheck (p, m, l2, r2))
                end
    in
       go
@@ -711,7 +711,7 @@ fun partitioni p =
                   val (l1, l2) = go l
                   val (r1, r2) = go r
                in
-                  (bin (p, m, l1, r1), bin (p, m, l2, r2))
+                  (binCheck (p, m, l1, r1), binCheck (p, m, l2, r2))
                end
    in
       go
