@@ -118,18 +118,16 @@ val singleton = tip
 
 fun insertLookupWithi f (t, kx, x) =
    let
-      val new = tip (kx, x)
-
       fun go t =
          case node t of
-            Nil => (NONE, new)
+            Nil => (NONE, tip (kx, x))
           | Tip (ky, y) =>
                if kx = ky
-                  then (SOME y, new)
-               else (NONE, link (ky, t, kx, new))
+                  then (SOME y, tip (kx, f (kx, y, x)))
+               else (NONE, link (ky, t, kx, tip (kx, x)))
           | Bin (p, m, l, r) =>
                if nomatch (kx, p, m)
-                  then (NONE, link (p, t, kx, new))
+                  then (NONE, link (p, t, kx, tip (kx, x)))
                else if zero (kx, m)
                   then case go l of (old, l') => (old, bin (p, m, l', r))
                else case go r of (old, r') => (old, bin (p, m, l, r'))
@@ -139,18 +137,16 @@ fun insertLookupWithi f (t, kx, x) =
 
 fun insertWithi f (t, kx, x) =
    let
-      val new = tip (kx, x)
-
       fun go t =
          case node t of
-            Nil => new
+            Nil => tip (kx, x)
           | Tip (ky, y) =>
                if kx = ky
-                  then new
-               else link (ky, t, kx, new)
+                  then tip (kx, f (kx, y, x))
+               else link (ky, t, kx, tip (kx, x))
           | Bin (p, m, l, r) =>
                if nomatch (kx, p, m)
-                  then link (p, t, kx, new)
+                  then link (p, t, kx, tip (kx, x))
                else if zero (kx, m)
                   then bin (p, m, go l, r)
                else bin (p, m, l, go r)
