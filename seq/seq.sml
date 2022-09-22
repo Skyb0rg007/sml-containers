@@ -14,6 +14,9 @@ fun singleton x () = Cons (x, empty)
 
 fun cons (x, xs) () = Cons (x, xs)
 
+fun fromList xs =
+   List.foldr cons empty xs
+
 fun append (s1, s2) () =
    case s1 () of
       Nil => s2 ()
@@ -273,7 +276,22 @@ fun zip (s1, s2) () =
             Nil => Nil
           | Cons (y, ys) => Cons ((x, y), zip (xs, ys))
 
+fun zipWith f (s1, s2) () =
+   case s1 () of
+      Nil => Nil
+    | Cons (x, xs) =>
+         case s2 () of
+            Nil => Nil
+          | Cons (y, ys) => Cons (f (x, y), zipWith f (xs, ys))
+
 fun unzip (s: ('a * 'b) t) = (map #1 s, map #2 s)
+
+fun liftEquals eq (s1, s2) =
+   case (s1 (), s2 ()) of
+      (Nil, Nil) => true
+    | (Cons (x, xs), Cons (y, ys)) =>
+         eq (x, y) andalso liftEquals eq (xs, ys)
+    | _ => false
 
 fun transpose s () =
    let

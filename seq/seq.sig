@@ -19,6 +19,7 @@ val forever: (unit -> 'a) -> 'a t
 val cycle: 'a t -> 'a t
 val iterate: ('a -> 'a) -> 'a -> 'a t
 val append: 'a t * 'a t -> 'a t
+val fromList: 'a list -> 'a t
 
 (* Consuming sequences *)
 val isEmpty: 'a t -> bool
@@ -33,11 +34,14 @@ val alli: (int * 'a -> bool) -> 'a t -> bool
 val exists: ('a -> bool) -> 'a t -> bool
 val existsi: (int * 'a -> bool) -> 'a t -> bool
 val find: ('a -> bool) -> 'a t -> 'a option
+val liftEquals: ('a * 'b -> bool) -> 'a t * 'b t -> bool
 
 (* Transforming sequences *)
 val map: ('a -> 'b) -> 'a t -> 'b t
 val mapi: (int * 'a -> 'b) -> 'a t -> 'b t
 val filter: ('a -> bool) -> 'a t -> 'a t
+val concat: 'a t t -> 'a t
+val concatMap: ('a -> 'b t) -> 'a t -> 'b t
 val mapPartial: ('a -> 'b option) -> 'a t -> 'b t
 val scan: ('a * 'b -> 'b) -> 'b -> 'a t -> 'b t
 val take: int -> 'a t -> 'a t
@@ -47,6 +51,7 @@ val dropWhile: ('a -> bool) -> 'a t -> 'a t
 val groupBy: ('a * 'a -> bool) -> 'a t -> 'a t t
 val memoize: 'a t -> 'a t
 val zip: 'a t * 'b t -> ('a * 'b) t
+val zipWith: ('a * 'b -> 'c) -> 'a t * 'b t -> 'c t
 val unzip: ('a * 'b) t -> 'a t * 'b t
 val transpose: 'a t t -> 'a t t
 val product: ('a * 'b -> 'c) -> 'a t * 'b t -> 'c t

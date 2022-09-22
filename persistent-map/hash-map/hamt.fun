@@ -406,14 +406,289 @@ fun size t =
       go (t, 0)
    end
 
-fun unionWithi _ = raise Fail "NYI"
-fun unionWith _ = raise Fail "NYI"
-fun differenceWithi _ = raise Fail "NYI"
-fun differenceWith _ = raise Fail "NYI"
-fun difference _ = raise Fail "NYI"
-fun intersectionWithi _ = raise Fail "NYI"
+fun concatCollisionWithi f (arr1, arr2) =
+   let
+      fun findIn1 k = Vector.findi (fn (_, (k', _)) => Key.equals (k, k')) arr1
+      (* The positions of elements of arr2 in arr1 *)
+      val indices = Vector.map (fn (k, _) => Option.map #1 (findIn1 k)) arr2
+      (* Number of elements in arr2 which aren't in arr1 *)
+      val nOnly2 = Vector.foldl (fn (NONE, n) => n + 1 | (SOME _, n) => n) 0 indices
+      val n1 = Vector.length arr1
+      val n2 = Vector.length arr2
+      val {done, update, ...} = VectorEx.create (n1 + nOnly2)
+      (* Copy all of arr1 into result *)
+      val () = Vector.appi update arr1
+      (* iEnd is the next unwritten element of result
+      * i2 is the next unread element of arr2 *)
+      fun go (iEnd, i2) =
+         if i2 >= n2
+            then ()
+         else
+            case Vector.sub (indices, i2) of
+               (* Element is in arr2 at i2, but not in arr1 *)
+               NONE => (update (iEnd, Vector.sub (arr2, i2)); go (iEnd + 1, i2 + 1))
+               (* Element is in arr2 at i2, and in arr1 at index i1 *)
+             | SOME i1 =>
+                  let
+                     val (k, x1) = Vector.sub (arr1, i1)
+                     val (_, x2) = Vector.sub (arr2, i2)
+                     val () = update (i1, (k, f (k, x1, x2)))
+                  in
+                     go (iEnd, i2 + 1)
+                  end
+      val () = go (n1, 0)
+   in
+      done ()
+   end
+
+fun unionArrayBy f (b1, b2, arr1, arr2) =
+   let
+      val bs = Word.orb (b1, b2)
+      val len = WordEx.popCount bs
+      val {done, update, ...} = VectorEx.create len
+
+      fun go (_, _, _, 0w0) = ()
+        | go (i, j1, j2, b) =
+         let
+            val m = Word.<< (0w1, Word.fromInt (WordEx.trailingZeros b))
+            fun testBit x = Word.andb (x, m) <> 0w0
+            val b' = Word.andb (b, Word.notb m)
+         in
+            if testBit (Word.andb (b1, b2))
+               then (update (i, f (Vector.sub (arr1, j1), Vector.sub (arr2, j2)))
+                     ; go (i + 1, j1 + 1, j2 + 1, b'))
+            else if testBit b1
+               then (update (i, Vector.sub (arr1, j1))
+                     ; go (i + 1, j1 + 1, j2, b'))
+            else (update (i, (Vector.sub (arr2, j2)))
+                  ; go (i + 1, j1, j2 + 1, b'))
+         end
+
+      val () = go (0, 0, 0, bs)
+   in
+      done ()
+   end
+
+fun unionWithi f =
+    let
+      fun leafHash (Leaf (h, _, _)) = h
+        | leafHash (Collision (h, _)) = h
+        | leafHash _ = raise Fail "unionWithi: leafHash given non-leaf!"
+
+      fun goDifferentHash (s, h, h', t, t') =
+          let
+            val m = mask (h, s)
+            val m' = mask (h', s)
+          in
+            case Word.compare (m, m') of
+               EQUAL => Bitmap (m, #[goDifferentHash (s + bitsPerSubkey, h, h', t, t')])
+             | LESS => Bitmap (Word.orb (m, m'), #[t, t'])
+             | GREATER => Bitmap (Word.orb (m, m'), #[t', t])
+          end
+
+        (* empty vs anything *)
+      fun go _ (t, Empty) = t
+        | go _ (Empty, t') = t'
+        (* leaf vs leaf *)
+        | go s (t as Leaf (h, k, x), t' as Leaf (h', k', x')) =
+            if h = h'
+              then if Key.equals (k, k')
+                     then Leaf (h, k, f (k, x, x'))
+                   else Collision (h, #[(k, x), (k', x')])
+            else goDifferentHash (s, h, h', t, t')
+        | go s (t as Leaf (h, k, x), t' as Collision (h', kxs')) =
+            if h = h'
+              (* Need to swap arguments since the collision is the right side *)
+              then Collision (h, insertCollisionWithi (fn (k, x, y) => f (k, y, x)) (kxs', k, x))
+            else goDifferentHash (s, h, h', t, t')
+        | go s (t as Collision (h, kxs), t' as Leaf (h', k', x')) =
+            if h = h'
+              then Collision (h, insertCollisionWithi f (kxs, k', x'))
+            else goDifferentHash (s, h, h', t, t')
+        | go s (t as Collision (h, kxs), t' as Collision (h', kxs')) =
+            if h = h'
+              then Collision (h, concatCollisionWithi f (kxs, kxs'))
+            else goDifferentHash (s, h, h', t, t')
+        (* branch vs branch *)
+        | go s (Bitmap (b, arr), Bitmap (b', arr')) =
+            Bitmap (Word.orb (b, b'), unionArrayBy (go (s + bitsPerSubkey)) (b, b', arr, arr'))
+        | go s (Bitmap (b, arr), Full arr') =
+            Full (unionArrayBy (go (s + bitsPerSubkey)) (b, fullNodeMask, arr, arr'))
+        | go s (Full arr, Bitmap (b', arr')) =
+            Full (unionArrayBy (go (s + bitsPerSubkey)) (fullNodeMask, b', arr, arr'))
+        | go s (Full arr, Full arr') =
+            Full (unionArrayBy (go (s + bitsPerSubkey)) (fullNodeMask, fullNodeMask, arr, arr'))
+        (* leaf vs branch *)
+        | go s (Bitmap (b, arr), t') =
+          let
+            val h' = leafHash t'
+            val m' = mask (h', s)
+            val i = sparseIndex (b, m')
+          in
+            if Word.andb (b, m') = 0w0
+              then bitmap (Word.orb (b, m'), vectorInsert (arr, i, t'))
+            else Bitmap (b, Vector.update (arr, i, go (s + bitsPerSubkey) (Vector.sub (arr, i), t')))
+          end
+        | go s (t, Bitmap (b', arr')) =
+          let
+            val h = leafHash t
+            val m = mask (h, s)
+            val i = sparseIndex (b', m)
+          in
+            if Word.andb (b', m) = 0w0
+              then bitmap (Word.orb (b', m), vectorInsert (arr', i, t))
+            else Bitmap (b', Vector.update (arr', i, go (s + bitsPerSubkey) (t, Vector.sub (arr', i))))
+          end
+        | go s (Full arr, t') =
+          let
+            val h' = leafHash t'
+            val i = index' (h', s)
+          in
+            Full (Vector.update (arr, i, go (s + bitsPerSubkey) (Vector.sub (arr, i), t')))
+          end
+        | go s (t, Full arr') =
+          let
+            val h = leafHash t
+            val i = index' (h, s)
+          in
+            Full (Vector.update (arr', i, go (s + bitsPerSubkey) (t, Vector.sub (arr', i))))
+          end
+    in
+      go 0w0
+    end
+
+fun unionWith f = unionWithi (fn (_, x, x') => f (x, x'))
+
+fun foldli f z t =
+   let
+      fun f' ((k, x), acc) = f (k, x, acc)
+
+      fun go (Empty, acc) = acc
+        | go (Leaf (_, k, x), acc) = f (k, x, acc)
+        | go (Bitmap (_, arr), acc) = Vector.foldl go acc arr
+        | go (Full arr, acc) = Vector.foldl go acc arr
+        | go (Collision (_, kxs), acc) = Vector.foldl f' acc kxs
+   in
+      go (t, z)
+   end
+
+fun foldri f z t =
+   let
+      fun f' ((k, x), acc) = f (k, x, acc)
+
+      fun go (Empty, acc) = acc
+        | go (Leaf (_, k, x), acc) = f (k, x, acc)
+        | go (Bitmap (_, arr), acc) = Vector.foldr go acc arr
+        | go (Full arr, acc) = Vector.foldr go acc arr
+        | go (Collision (_, kxs), acc) = Vector.foldr f' acc kxs
+   in
+      go (t, z)
+   end
+
+fun appi f =
+   let
+      fun go Empty = ()
+        | go (Leaf (_, k, x)) = f (k, x)
+        | go (Bitmap (_, arr)) = Vector.app go arr
+        | go (Full arr) = Vector.app go arr
+        | go (Collision (_, kxs)) = Vector.app f kxs
+   in
+      go
+   end
+
+fun existsi f =
+  let
+     fun go Empty = false
+       | go (Leaf (_, k, x)) = f (k, x)
+       | go (BitmapIndexed (_, arr)) = Vector.exists go arr
+       | go (Full arr) = Vector.exists go arr
+       | go (Collision (_, kxs)) = Vector.exists f kxs
+  in
+     go
+  end
+
+fun alli f =
+  let
+     fun go Empty = true
+       | go (Leaf (_, k, x)) = f (k, x)
+       | go (BitmapIndexed (_, arr)) = Vector.all go arr
+       | go (Full arr) = Vector.all go arr
+       | go (Collision (_, kxs)) = Vector.all f kxs
+  in
+     go
+  end
+
+fun foldl f = foldli (fn (_, x, a) => f (x, a))
+fun foldr f = foldri (fn (_, x, a) => f (x, a))
+fun app f = appi (fn (_, x) => f x)
+fun exists f = existsi (fn (_, x) => f x)
+fun all f = alli (fn (_, x) => f x)
+fun listItemsi t = foldri (fn (k, x, z) => (k, x) :: z) [] t
+fun listItems t = foldr op :: [] t
+fun listKeys t = foldri (fn (k, _, z) => k :: z) [] t
+
+fun differenceWithi f (t, t') =
+   let
+      fun go (k, x, m) =
+         case find (t', k) of
+            NONE => insert (m, k, x)
+          | SOME x' =>
+               case f (k, x, x') of
+                  NONE => m
+                | SOME y => insert (m, k, y)
+   in
+      foldli go empty t
+   end
+
+fun differenceWith f = differenceWithi (fn (_, x, x') => f (x, x'))
+
+fun difference (t, t') =
+   let
+      fun go (k, x, t) =
+         if inDomain (t', k)
+            then t
+         else insert (t, k, x)
+   in
+      foldli go empty t
+   end
+
+fun intersectionWithi f = raise Fail "NYI"
+   (* let *)
+   (*    fun go _ (_, Empty) = Empty *)
+   (*      | go _ (Empty, _) = Empty *)
+   (*      | go s (Leaf (h, k, x1), t2) = *)
+   (*       (case find' (s, t2, h, k) of *)
+   (*           NONE => Empty *)
+   (*         | SOME x2 => *)
+   (*              case f (k, x1, x2) of *)
+   (*                 NONE => Empty *)
+   (*               | SOME y => Leaf (h, k, y)) *)
+   (*      | go s (t1, Leaf (h, k, x2)) = *)
+   (*       (case find' (s, t1, h, k) of *)
+   (*           NONE => Empty *)
+   (*         | SOME x1 => *)
+   (*              case f (k, x1, x2) of *)
+   (*                 NONE => Empty *)
+   (*               | SOME y => Leaf (h, k, y)) *)
+   (*      | go _ (Collision kxs1, Collision kxs2) = *)
+   (*       goCollision (kxs1, kxs2) *)
+
+   (*      | go s (Bitmap (b1, arr1), Bitmap (b2, arr2)) = *)
+   (*       goArray (go (s + bitsPerSubkey)) (b1, b2, arr1, arr2) *)
+   (*      | go s (Bitmap (b1, arr1), Full arr2) = *)
+   (*       goArray (go (s + bitsPerSubkey)) (b1, fullNodeMask, arr1, arr2) *)
+   (*      | go s (Full arr1, Bitmap (b2, arr2)) = *)
+   (*       goArray (go (s + bitsPerSubkey)) (fullNodeMask, b2, arr1, arr2) *)
+   (*      | go s (Full arr1, Full arr2) = *)
+   (*       goArray (go (s + bitsPerSubkey)) (fullNodeMask, fullNodeMask, arr1, arr2) *)
+
+   (* in *)
+   (*    go 0w0 *)
+   (* end *)
+
 fun intersectionWith _ = raise Fail "NYI"
 fun intersection _ = raise Fail "NYI"
+
 fun disjoint _ = raise Fail "NYI"
 fun mapi _ = raise Fail "NYI"
 fun map _ = raise Fail "NYI"
@@ -421,19 +696,6 @@ fun mapAccumLi _ = raise Fail "NYI"
 fun mapAccumL _ = raise Fail "NYI"
 fun mapAccumRi _ = raise Fail "NYI"
 fun mapAccumR _ = raise Fail "NYI"
-fun foldli _ = raise Fail "NYI"
-fun foldl _ = raise Fail "NYI"
-fun foldri _ = raise Fail "NYI"
-fun foldr _ = raise Fail "NYI"
-fun appi _ = raise Fail "NYI"
-fun app _ = raise Fail "NYI"
-fun existsi _ = raise Fail "NYI"
-fun exists _ = raise Fail "NYI"
-fun alli _ = raise Fail "NYI"
-fun all _ = raise Fail "NYI"
-fun keys _ = raise Fail "NYI"
-fun elems _ = raise Fail "NYI"
-fun toList _ = raise Fail "NYI"
 fun filteri _ = raise Fail "NYI"
 fun filter _ = raise Fail "NYI"
 fun mapPartiali _ = raise Fail "NYI"

@@ -1,0 +1,22 @@
+
+local
+   $(SML_LIB)/basis/basis.mlb
+   ../../seq/sources.mlb
+   ../../util/sources.mlb
+
+   internal/seed.sig
+   internal/seed.sml
+   internal/tree.sig
+   ann "allowExtendedTextConsts true" in
+      internal/tree.sml
+   end
+
+   range.sig
+   range.sml
+
+   gen.sig
+   gen.sml
+in
+end
+
+(* vim: set tw=0 ts=3 sw=3 cms=(*%s*): *)

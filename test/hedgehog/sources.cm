@@ -1,0 +1,16 @@
+
+Group is
+  $/basis.cm
+  ../../seq/sources.cm
+  ../../util/sources.cm
+
+  internal/seed.sig
+  internal/seed.sml
+  internal/tree.sig
+  internal/tree.sml
+
+  range.sig
+  range.sml
+
+  gen.sig
+  gen.sml
