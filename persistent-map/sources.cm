@@ -24,8 +24,8 @@ Library
   signature LSS_WORD_MAP_STRUCTS
   functor LSSWordMapFn
 
-  (* signature HASH_CONS_WORD_MAP_STRUCTS *)
-  (* functor HashConsWordMapFn *)
+  signature HASH_CONS_WORD_MAP_STRUCTS
+  functor HashConsWordMapFn
 
   (* Hash Maps *)
   (* functor HAMTFn *)
@@ -53,8 +53,8 @@ is
   word-map/augmented-word-map.fun
   word-map/lss-word-map.sig
   word-map/lss-word-map.fun
-  (* word-map/hash-cons-word-map.sig *)
-  (* word-map/hash-cons-word-map.fun *)
+  word-map/hash-cons-word-map.sig
+  word-map/hash-cons-word-map.fun
   (* word-map/hash-cons.fun *)
 
   hash-map/hamt.fun

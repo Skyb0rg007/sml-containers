@@ -1,5 +1,4 @@
 
-(* structure Gen: GEN = *)
 structure Gen =
 struct
 
@@ -7,28 +6,55 @@ datatype 'a t = T of int * Seed.t -> 'a Tree.t option
 
 fun run (T gen, size, seed) = gen (size, seed)
 
+structure M =
+   MonadFn(
+      struct
+         type 'a t = 'a t
+
+         fun pure a = T (fn _ => SOME (Tree.pure a))
+
+         fun map f (T m) = T (fn args => Option.map (Tree.map f) (m args))
+
+         fun bind (T m) k = T (fn (size, seed) =>
+            let
+               val (s1, s2) = Seed.split seed
+            in
+               case m (size, s1) of
+                  NONE => NONE
+                | SOME t => Tree.bindOpt t (fn x => run (k x, size, s2))
+            end)
+      end)
+
+open M
+
+fun fix f =
+   let
+      val r = ref (T (fn _ => raise Fail "Gen.fix: forced early"))
+      val g = T (fn (size, seed) => run (!r, size, seed))
+      val res = f g
+   in
+      r := res
+      ; res
+   end
+
 fun sample gen =
    let
       val size = 30
 
-      val rng = ref (Seed.new ())
-      fun seed () =
-         let
-            val (s1, s2) = Seed.split (!rng)
-         in
-            rng := s1
-            ; s2
-         end
-
-      fun go n =
+      fun go (n, seed) =
          if n <= 0
-            then raise Fail "Gen.sample: too many discards, could not generate a sample"
+            then raise Fail
+               "Gen.sample: too many discards, could not generate a sample"
          else
-            case run (gen, size, seed ()) of
-               NONE => go (n - 1)
-             | SOME t => Tree.root t
+            let
+               val (s1, s2) = Seed.split seed
+            in
+               case run (gen, size, s1) of
+                  NONE => go (n - 1, s2)
+                | SOME t => Tree.root t
+            end
    in
-      go 100
+      go (100, Seed.new ())
    end
 
 fun print gen =
@@ -63,61 +89,6 @@ fun bindTree gen f = T (fn (size, seed) =>
     | SOME t => f t)
 
 fun mapTree f gen = bindTree gen (SOME o f)
-
-fun map f = mapTree (Tree.map f)
-
-fun pure a = T (fn _ => SOME (Tree.pure a))
-
-fun ap (f, m) = T (fn (size, seed) =>
-   let
-      val (s1, s2) = Seed.split seed
-   in
-      case run (f, size, s1) of
-         NONE => NONE
-       | SOME t1 =>
-            case run (m, size, s2) of
-               NONE => NONE
-             | SOME t2 => SOME (Tree.ap (t1, t2))
-   end)
-
-fun map2 f (x, y) = T (fn (size, seed) =>
-   let
-      val (s1, s2) = Seed.split seed
-   in
-      case run (x, size, s1) of
-         NONE => NONE
-       | SOME t1 =>
-            case run (y, size, s2) of
-               NONE => NONE
-             | SOME t2 => SOME (Tree.map2 f (t1, t2))
-   end)
-
-fun bind m k = T (fn (size, seed) =>
-   let
-      val (s1, s2) = Seed.split seed
-   in
-      case run (m, size, s1) of
-         NONE => NONE
-       | SOME t => Tree.bindOpt t (fn x => run (k x, size, s2))
-   end)
-
-fun join m = bind m (fn x => x)
-
-fun mapM _ [] = pure []
-  | mapM f (x :: xs) = map2 op :: (f x, mapM f xs)
-
-fun sequence [] = pure []
-  | sequence (x :: xs) = map2 op :: (x, sequence xs)
-
-fun fix f =
-   let
-      val r = ref (T (fn _ => raise Fail "Gen.fix: forced early"))
-      val g = T (fn (size, seed) => run (!r, size, seed))
-      val res = f g
-   in
-      r := res
-      ; res
-   end
 
 val discard = T (fn _ => NONE)
 
@@ -155,6 +126,7 @@ fun resize size gen = scale (fn _ => size) gen
 
 fun small gen =
    let
+      (* I had to make the scaling factor smaller, test this *)
       fun golden n = Real.round (Real.fromInt n * 0.61803398875 * 0.5)
    in
       scale golden gen
@@ -188,14 +160,14 @@ fun mapPartial p gen =
 
 fun filter p = mapPartial (fn x => if p x then SOME x else NONE)
 
-fun intInfHelper range (size, seed) =
+fun genRange range (size, seed) =
    let
       val (x, y) = Range.bounds (range, size)
    in
       #1 (Seed.nextIntInf (x, y) seed)
    end
 
-fun intInf_ range = T (SOME o Tree.pure o intInfHelper range)
+fun intInf_ range = T (SOME o Tree.pure o genRange range)
 
 fun halves n =
    Seq.takeWhile (fn k => k <> 0) (Seq.iterate (fn k => IntInf.quot (k, 2)) n)
@@ -225,7 +197,7 @@ fun intInf range =
             val shrinks = shrinkTowards bot top
             val children = Seq.zipWith bst (shrinks, Seq.drop 1 shrinks)
          in
-            Tree.Node (top, children)
+            Tree.node (top, children)
          end
 
       fun create root =
@@ -233,7 +205,7 @@ fun intInf range =
             then Tree.pure root
          else Tree.consChild (origin, bst (origin, root))
    in
-      T (fn (size, seed) => SOME (create (intInfHelper range (size, seed))))
+      T (fn (size, seed) => SOME (create (genRange range (size, seed))))
    end
 
 val int = map Int.fromLarge o intInf o Range.map Int.toLarge
@@ -339,11 +311,6 @@ fun atLeast n xs =
          [] => false
        | _ :: ys => atLeast (n - 1) ys
 
-fun replicate' n gen =
-   if n <= 0
-      then pure []
-   else map2 op :: (gen, replicate' (n - 1) gen)
-
 fun list range (gen: 'a t) =
    sized (fn size =>
       ensure (atLeast (Range.lowerBound (range, size)))
@@ -362,7 +329,7 @@ fun list range (gen: 'a t) =
                      end
 
                val (s, seed) = Seed.split seed
-               val n = IntInf.toInt (intInfHelper (Range.map Int.toLarge range) (size, s))
+               val n = IntInf.toInt (genRange (Range.map Int.toLarge range) (size, s))
             in
                SOME (Tree.interleave (genTrees (n, seed)))
             end)))

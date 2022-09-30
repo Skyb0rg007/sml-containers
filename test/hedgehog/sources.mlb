@@ -11,11 +11,17 @@ local
       internal/tree.sml
    end
 
+   monad.sig
+   monad.fun
+
    range.sig
    range.sml
 
    gen.sig
    gen.sml
+
+   hedgehog.sig
+   hedgehog.sml
 in
 end
 

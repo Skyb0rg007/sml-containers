@@ -81,7 +81,7 @@ fun link (p1, t1, p2, t2) =
       val m = WordEx.highestBitMask (Word.xorb (p1, p2))
       val p = mask (p1, m)
    in
-      if Word.andb (p1, m) = Word.xorb (p1, p2)
+      if zero (p1, m)
          then bin (p, m, t1, t2)
       else bin (p, m, t2, t1)
    end

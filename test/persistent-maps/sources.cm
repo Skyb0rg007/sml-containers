@@ -1,0 +1,7 @@
+
+Group is
+  $/basis.cm
+  ../../persistent-map/sources.cm
+  ../hedgehog/sources.cm
+
+  test.sml

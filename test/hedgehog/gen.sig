@@ -2,7 +2,9 @@
 signature GEN =
 sig
 
-type 'a t
+include MONAD
+
+val fix: ('a t -> 'a t) -> 'a t
 
 (** Sampling **)
 val sample: 'a t -> 'a
@@ -13,22 +15,18 @@ val printTree: string t -> unit
 val shrink: ('a -> 'a Seq.t) -> 'a t -> 'a t
 val prune: 'a t -> 'a t
 
+(** Conditional **)
+val or: 'a t * 'a t -> 'a t
+val discard: 'a t
+val ensure: ('a -> bool) -> 'a t -> 'a t
+val filter: ('a -> bool) -> 'a t -> 'a t
+val mapPartial: ('a -> 'b option) -> 'a t -> 'b t
+
 (** Size **)
 val small: 'a t -> 'a t
 val scale: (int -> int) -> 'a t -> 'a t
 val resize: int -> 'a t -> 'a t
 val sized: (int -> 'a t) -> 'a t
-
-(** Monadic **)
-val map: ('a -> 'b) -> 'a t -> 'b t
-val pure: 'a -> 'a t
-val map2: ('a * 'b -> 'c) -> 'a t * 'b t -> 'c t
-val ap: ('a -> 'b) t * 'a t -> 'b t
-val bind: 'a t -> ('a -> 'b t) -> 'b t
-val join: 'a t t -> 'a t
-val mapM: ('a -> 'b t) -> 'a list -> 'b list t
-val sequence: 'a t list -> 'a list t
-val fix: ('a t -> 'a t) -> 'a t
 
 (** Integral **)
 val int: int Range.t -> int t
@@ -74,13 +72,6 @@ val element: 'a list -> 'a t
 val element_: 'a list -> 'a t
 val choice: 'a t list -> 'a t
 val frequency: (int * 'a t) list -> 'a t
-
-(** Conditional **)
-val or: 'a t * 'a t -> 'a t
-val discard: 'a t
-val ensure: ('a -> bool) -> 'a t -> 'a t
-val filter: ('a -> bool) -> 'a t -> 'a t
-val mapPartial: ('a -> 'b option) -> 'a t -> 'b t
 
 (** Collections **)
 (* val option: 'a t -> 'a option t *)

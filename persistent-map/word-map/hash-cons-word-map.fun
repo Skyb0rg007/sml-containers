@@ -4,21 +4,13 @@ struct
 
 open S
 
-structure Tag :>
-   sig
-      type t
-
-      val next: unit -> t
-      val equals: t * t -> bool
-   end =
+structure Tag =
    struct
       type t = word
 
       val counter = ref 0w0
 
       fun next () = !counter before counter := !counter + 0w1
-
-      val equals: t * t -> bool = op =
    end
 
 type key = word
@@ -33,149 +25,165 @@ and map = Map of {hash: word, tag: Tag.t, node: node}
 
 fun node (Map {node, ...}) = node
 fun hash (Map {hash, ...}) = hash
-fun tag (Map {tag, ...}) = tag
+fun toWord (Map {tag, ...}) = tag
 
-fun equals (Map {tag = t1, ...}, Map {tag = t2, ...}) = Tag.equals (t1, t2)
+fun equals (t1, t2) = toWord t1 = toWord t2
 
-fun equalsNode (Nil, Nil) = true
-  | equalsNode (Tip (k, x), Tip (k', x')) = k = k' andalso Value.equals (x, x')
-  | equalsNode (Bin (p, m, l, r), Bin (p', m', l', r')) =
-   p = p'
-   andalso m = m'
-   andalso equals (l, l')
-   andalso equals (r, r')
-  | equalsNode _ = false
+local
+   fun equalsNode (Nil, Nil) = true
+     | equalsNode (Tip (k, x), Tip (k', x')) = k = k' andalso Value.equals (x, x')
+     | equalsNode (Bin (p, m, l, r), Bin (p', m', l', r')) =
+      p = p'
+      andalso m = m'
+      andalso equals (l, l')
+      andalso equals (r, r')
+     | equalsNode _ = false
 
-(* Hash combining function from the Boost C++ library *)
-fun hashCombine (seed, h) =
-   Word.xorb (seed, h + 0wx9e3779b9 + Word.<< (seed, 0w6) + Word.>> (seed, 0w2))
+   (* Hash combining function from the Boost C++ library *)
+   fun hashCombine (seed, h) =
+      Word.xorb (seed, h + 0wx9e3779b9 + Word.<< (seed, 0w6) + Word.>> (seed, 0w2))
 
-fun hashNode Nil = 0w1
-  | hashNode (Tip (k, x)) = hashCombine (k, Value.hash x)
-  | hashNode (Bin (_, _, l, r)) = hashCombine (hash l, hash r)
+   fun hashNode Nil = 0w1
+     | hashNode (Tip (k, x)) = hashCombine (0w2, hashCombine (k, Value.hash x))
+     | hashNode (Bin (_, _, l, r)) = hashCombine (0w3, hashCombine (hash l, hash r))
 
-structure HC =
-   struct
-      val tombstone_tag = Tag.next ()
-      val tombstone = Weak.new (Map {hash = 0w0, tag = tombstone_tag, node = Nil})
-      fun isTombstone m = Tag.equals (tag m, tombstone_tag)
-      fun freeSlot w =
-         case Weak.get w of
-            NONE => true
-          | SOME m => isTombstone m
+   datatype bucketlist =
+      Empty
+    | Cons of map * bucketlist ref
 
-      val empty_bucket: map Weak.t array = Array.fromList []
+   val tbl = ref (Array.array (32, Empty))
+   val size = ref 0
 
-      val table = ref (Array.array (128, empty_bucket))
+   fun grow () =
+      let
+         val odata = !tbl
+         val osize = Array.length odata
+         val nsize = osize * 2
+         val ndata = Array.array (nsize, Empty)
+         val ndata_tail = Array.array (nsize, Empty)
+         val mask = Word.fromInt (nsize - 1)
 
-      val size = ref 0
+         fun insertBucket Empty = ()
+           | insertBucket (cell as Cons (key, next)) =
+            let
+               val nidx = Word.toInt (Word.andb (hash key, mask))
+            in
+               case Array.sub (ndata_tail, nidx) of
+                  Empty => Array.update (ndata, nidx, cell)
+                | Cons (_, tail) => tail := cell
+               ; Array.update (ndata_tail, nidx, cell)
+               ; insertBucket (!next)
+            end
 
-      val limit = ref 3
+      in
+         Array.app insertBucket odata
+         ; Array.app
+           (fn Empty => ()
+             | Cons (_, tail) => tail := Empty)
+           ndata_tail
+         ; tbl := ndata
+      end
+in
+   fun hashcons n =
+      let
+         val h = hashNode n
 
-      fun nextSize n = 3 * n div 2 + 3
+         val data = !tbl
+         val nbuckets = Array.length data
+         val mask = Word.fromInt (nbuckets - 1)
+         val bucketIndex = Word.toInt (Word.andb (h, mask))
+         val bucket = Array.sub (data, bucketIndex)
 
-      fun forEach tbl f =
-         let
-            fun goWeak w =
-               case Weak.get w of
-                  NONE => ()
-                | SOME m => if isTombstone m then () else f m
+         fun findBucket Empty = NONE
+           | findBucket (cell as Cons (m, next)) =
+            if h = hash m andalso equalsNode (n, node m)
+               then SOME m
+            else findBucket (!next)
+      in
+         case findBucket bucket of
+            SOME m => m
+          | NONE =>
+               let
+                  val m = Map {hash = h, node = n, tag = Tag.next ()}
+               in
+                  Array.update (data, bucketIndex, Cons (m, ref bucket))
+                  ; size := !size + 1
+                  ; if !size > nbuckets * 2 then grow () else ()
+                  ; m
+               end
+      end
+end
 
-            fun goBkt i bkt =
-               if i < Array.length bkt
-                  then (goWeak (Array.sub (bkt, i)); goBkt (i + 1) bkt)
-               else ()
-         in
-            Array.app (goBkt 0) tbl
-         end
+fun tip (k, x) = hashcons (Tip (k, x))
+fun bin (p, m, l, r) = hashcons (Bin (p, m, l, r))
 
-      fun resize () =
-         let
-            val old_table = !table
-            val old_limit = !limit
-            val old_len = Array.length old_table
-            val new_len = nextSize old_len
-         in
-            (* Re-initialize *)
-            size := 0
-            ; limit := old_limit + 100 (* Temporary *)
-            ; table := Array.array (new_len, empty_bucket)
-            (* Add all live elements from the old table *)
-            ; forEach old_table add
-            (* Increase the limit by 2 *)
-            ; limit := old_limit + 2
-         end
+fun binCheckL (_, _, Map {node = Nil, ...}, r) = r
+  | binCheckL (p, m, l, r) = hashcons (Bin (p, m, l, r))
 
-      and add m =
-         let
-            val index = Word.toInt (hash m) mod Array.length (!table)
-            val bucket = Array.sub (!table, index)
-            val bkt_size = Array.length bucket
+fun binCheckR (_, _, l, Map {node = Nil, ...}) = l
+  | binCheckR (p, m, l, r) = hashcons (Bin (p, m, l, r))
 
-            fun go i =
-               if i < bkt_size
-                  then
-                     if freeSlot (Array.sub (bucket, i))
-                        then Array.update (bucket, i, Weak.new m)
-                     else go (i + 1)
-               else
-                  let
-                     val new_size = bkt_size + 3
-                     val new_bucket = Array.array (new_size, tombstone)
-                  in
-                     Array.copy {di = 0, dst = new_bucket, src = bucket}
-                     ; Array.update (new_bucket, bkt_size, Weak.new m)
-                     ; Array.update (!table, index, new_bucket)
-                     ; size := !size + (new_size - bkt_size)
-                     ; if !size > !limit * Array.length (!table)
-                          then resize ()
-                       else ()
-                  end
-         in
-            go 0
-         end
+fun binCheck (_, _, l, Map {node = Nil, ...}) = l
+  | binCheck (_, _, Map {node = Nil, ...}, r) = r
+  | binCheck (p, m, l, r) = hashcons (Bin (p, m, l, r))
 
-      fun hashcons n =
-         let
-            val hkey = hashNode n
-            val index = Word.toInt hkey mod Array.length (!table)
-            val bucket = Array.sub (!table, index)
-            val size = Array.length bucket
+fun mask (k, m) = Word.andb (k, Word.xorb (m, Word.notb m + 0w1))
 
-            fun go i =
-               if i >= size
-                  then
-                     let
-                        val tag = Tag.next ()
-                        val m = Map {hash = hkey, tag = tag, node = n}
-                     in
-                        add m
-                        ; m
-                     end
-               else
-                  let
-                     val w = Array.sub (bucket, i)
-                  in
-                     case Weak.get w of
-                        NONE => go (i + 1)
-                      | SOME m =>
-                           if equalsNode (n, node m)
-                              then m
-                           else go (i + 1)
-                  end
-         in
-            go 0
-         end
+fun nomatch (k, p, m) = mask (k, m) <> p
+
+fun zero (k, m) = Word.andb (k, m) = 0w0
+
+fun link (p1, t1, p2, t2) =
+   let
+      val m = WordEx.highestBitMask (Word.xorb (p1, p2))
+      val p = mask (p1, m)
+   in
+      if zero (p1, m)
+         then bin (p, m, t1, t2)
+      else bin (p, m, t2, t1)
    end
 
+val shorter = Word.>
 
-(* val empty = Map (0w0, Nil) *)
+(** Exports **)
 
-(* fun tip (k, x) = *)
-(*    let *)
-(*    in *)
-(*       () *)
-(*    end *)
+val empty = hashcons Nil
+
+val singleton = tip
+
+fun insertLookupWithi f (t, kx, x) =
+   let
+      fun go (Map {node = Nil, ...}) = (NONE, tip (kx, x))
+        | go (Map {node = Tip (ky, y), ...}) =
+         if kx = ky
+            then (SOME y, tip (kx, f (kx, y, x)))
+         else (NONE, link (ky, t, kx, tip (kx, x)))
+        | go (Map {node = Bin (p, m, l, r), ...}) =
+         if nomatch (kx, p, m)
+            then (NONE, link (p, t, kx, tip (kx, x)))
+         else if zero (kx, m)
+            then case go l of (old, l') => (old, bin (p, m, l', r))
+         else case go r of (old, r') => (old, bin (p, m, l, r'))
+   in
+      go t
+   end
+
+fun insertWithi f (t, kx, x) =
+   let
+      fun go (Map {node = Nil, ...}) = tip (kx, x)
+        | go (Map {node = Tip (ky, y), ...}) =
+         if kx = ky
+            then tip (kx, f (kx, y, x))
+         else link (ky, t, kx, tip (kx, x))
+        | go (Map {node = Bin (p, m, l, r), ...}) =
+         if nomatch (kx, p, m)
+            then link (p, t, kx, tip (kx, x))
+         else if zero (kx, m)
+            then bin (p, m, go l, r)
+         else bin (p, m, l, go r)
+   in
+      go t
+   end
 
 end
 

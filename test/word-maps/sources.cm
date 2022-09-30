@@ -1,0 +1,9 @@
+
+Group is
+  $/basis.cm
+  ../../sources.cm
+  ../quickcheck/sources.cm
+
+  word-map.sml
+
+(* vim: set tw=0 ts=2 sw=2 cms=(*%s*): *)

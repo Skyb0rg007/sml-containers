@@ -1,7 +1,5 @@
 
-functor AugmentedWordMapFn(S: AUGMENTED_WORD_MAP_STRUCTS)
-(* : AUGMENTED_WORD_MAP = *)
-=
+functor AugmentedWordMapFn(S: AUGMENTED_WORD_MAP_STRUCTS): AUGMENTED_WORD_MAP =
 struct
 
 open S
