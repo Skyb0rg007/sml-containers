@@ -1,0 +1,15 @@
+
+local
+   $(SML_LIB)/basis/basis.mlb
+   ../util/sources.mlb
+
+   cow-vector.sig
+   cow-vector.fun
+
+   rrb-vector.sig
+   rrb-vector.sml
+in
+   signature RRB_VECTOR
+   structure RRBVector
+end
+

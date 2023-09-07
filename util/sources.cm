@@ -6,6 +6,8 @@ Library
   structure Weak
   signature VECTOR_EXTRA
   structure VectorEx
+  signature ARRAY_EXTRA
+  structure ArrayEx
   signature WORD_EXTRA
   structure WordEx
   signature UTIL
@@ -14,6 +16,8 @@ is
   $/basis.cm
   $/smlnj-lib.cm
 
+  array-extra.sig
+  array-extra-smlnj.sml
   vector-extra.sig
   vector-extra-smlnj.sml
   word-extra.sig

@@ -1,0 +1,14 @@
+
+Library
+  signature RRB_VECTOR
+  structure RRBVector
+is
+  $/basis.cm
+  ../util/sources.cm
+
+  cow-vector.sig
+  cow-vector.fun
+
+  rrb-vector.sig
+  rrb-vector.sml
+
